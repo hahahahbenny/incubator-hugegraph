@@ -20,9 +20,11 @@ package org.apache.hugegraph.schema;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.apache.hugegraph.backend.id.Id;
 import org.apache.hugegraph.exception.NotAllowException;
 import org.apache.hugegraph.type.define.Action;
 import org.apache.hugegraph.util.DateUtil;
+import org.apache.hugegraph.util.E;
 
 public class Userdata extends HashMap<String, Object> {
 
@@ -106,5 +108,11 @@ public class Userdata extends HashMap<String, Object> {
                 throw new AssertionError(String.format(
                         "Unknown schema action '%s'", action));
         }
+    }
+
+    public static void checkDimensionAndMetric(Userdata userdata) {
+        E.checkArgument((userdata.get("dimension") != null) &&
+                        (userdata.get("metric") != null),
+                        "The vector index dimension and metric can't not be null");
     }
 }
