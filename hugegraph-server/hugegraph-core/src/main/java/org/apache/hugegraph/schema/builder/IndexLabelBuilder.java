@@ -56,12 +56,12 @@ public class IndexLabelBuilder extends AbstractBuilder
         implements IndexLabel.Builder {
 
     private Id id;
-    private String name;
+    private final String name;
     private HugeType baseType;
     private String baseValue;
     private IndexType indexType;
-    private List<String> indexFields;
-    private Userdata userdata;
+    private final List<String> indexFields;
+    private final Userdata userdata;
     private boolean checkExist;
     private boolean rebuild;
 
