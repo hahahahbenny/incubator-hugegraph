@@ -248,7 +248,7 @@ public class VertexAPI extends BatchAPI {
 
         AnnSearchRequest.checkRequest(searchRequest);
 
-        HugeGraph g = graph(manager,graphSpace, graph);
+        HugeGraph g = graph(manager, graphSpace, graph);
 
         // Check if vertex label exists
         VertexLabel vertexLabel = g.vertexLabel(searchRequest.vertex_label);
