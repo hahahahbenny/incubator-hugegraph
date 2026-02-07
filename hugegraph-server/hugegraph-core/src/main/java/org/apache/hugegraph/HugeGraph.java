@@ -57,6 +57,7 @@ import org.apache.hugegraph.traversal.optimize.HugeVertexStepStrategy;
 import org.apache.hugegraph.type.HugeType;
 import org.apache.hugegraph.type.define.GraphMode;
 import org.apache.hugegraph.type.define.GraphReadMode;
+import org.apache.hugegraph.vector.VectorIndexManager;
 import org.apache.tinkerpop.gremlin.process.traversal.TraversalStrategies;
 import org.apache.tinkerpop.gremlin.process.traversal.strategy.optimization.CountStrategy;
 import org.apache.tinkerpop.gremlin.structure.Edge;
@@ -279,6 +280,8 @@ public interface HugeGraph extends Graph {
     TaskScheduler taskScheduler();
 
     RaftGroupManager raftGroupManager();
+
+    VectorIndexManager<Id> vectorIndexManager();
 
     void proxy(HugeGraph graph);
 
