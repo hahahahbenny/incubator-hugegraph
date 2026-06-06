@@ -69,7 +69,7 @@ public abstract class AbstractTransaction implements Transaction {
 
     protected final AbstractSerializer serializer;
 
-    protected final ThreadLocal<Map<Id, Boolean>> vectorIndexChanges =
+    protected static final ThreadLocal<Map<Id, Boolean>> vectorIndexChanges =
             ThreadLocal.withInitial(HashMap::new);
 
     public AbstractTransaction(HugeGraphParams graph, BackendStore store) {

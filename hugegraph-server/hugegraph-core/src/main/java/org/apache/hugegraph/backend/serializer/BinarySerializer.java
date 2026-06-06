@@ -119,7 +119,7 @@ public class BinarySerializer extends AbstractSerializer {
             return new BinaryBackendEntry(type, (BinaryId) id);
         }
 
-        if (type.isIndex()) {
+        if (type.isIndex() || type.isVectorIndex() || type.code() == (byte) 182) {
             if (this.enablePartition) {
                 if (type.isStringIndex()) {
                     // TODO: add string index partition
@@ -390,10 +390,10 @@ public class BinarySerializer extends AbstractSerializer {
     protected void parseIndexName(HugeGraph graph, ConditionQuery query,
                                   BinaryBackendEntry entry,
                                   HugeIndex index, Object fieldValues) {
-        boolean isVectorIndex = index.type() != HugeType.VECTOR_INDEX_MAP;
+        boolean isVectorIndex = index.type().isVectorIndex();
         for (BackendColumn col : entry.columns()) {
-            if((isVectorIndex && isVectorDleted(col.value)) ||
-                indexFieldValuesUnmatched(col.value, fieldValues)){
+            if ((isVectorIndex && isVectorDleted(col.value)) ||
+                (!isVectorIndex && indexFieldValuesUnmatched(col.value, fieldValues))) {
                 // Skip if field-values is not matched (just the same hash)
                 continue;
             }
@@ -408,18 +408,16 @@ public class BinarySerializer extends AbstractSerializer {
     }
 
     protected byte[] formatVectorSequenceName(HugeVectorIndexMap vectorIndexMap) {
-        BytesBuffer buffer;
         Id sequenceId = vectorIndexMap.sequenceId();
         Object vectorId = vectorIndexMap.fieldValues();
 
-        // len_prefix(1byte) + sequenceId_length + vectorId(int)
-        int idLen = 1 + sequenceId.length() + 4;
-        buffer = BytesBuffer.allocate(idLen);
-        // Write index-id
-        buffer.writeId(sequenceId);
-
-        byte[] bytes = number2bytes((Number) vectorId);
-        buffer.write(bytes);
+        // sequenceId_length + vectorId(int)
+        int idLen = sequenceId.length() + 4;
+        BytesBuffer buffer = BytesBuffer.allocate(idLen);
+        // Write index-id (raw bytes, no length prefix, matching newBackendEntry)
+        buffer.write(sequenceId.asBytes());
+        // Write vectorId as fixed 4-byte int (matching readInt in parseVectorSequenceName)
+        buffer.writeInt(((Number) vectorId).intValue());
         return buffer.bytes();
     }
 
@@ -428,8 +426,8 @@ public class BinarySerializer extends AbstractSerializer {
         for (BackendColumn col : entry.columns()) {
             BytesBuffer buffer = BytesBuffer.wrap(col.name);
 
-            // dirty_prefix(1byte) + indexlabelid(4bytes) + sequence(8byte)
-            buffer.read(vectorIndexMap.sequenceId().length()+1);
+            // sequenceId = prefix(1byte) + indexlabelid(4bytes) + sequence(8byte)
+            buffer.read(vectorIndexMap.sequenceId().length());
             Object fieldValue = buffer.readInt();
             vectorIndexMap.fieldValues(fieldValue);
         }
@@ -690,7 +688,7 @@ public class BinarySerializer extends AbstractSerializer {
             return null;
         }
         BinaryBackendEntry entry = this.convertEntry(bytesEntry);
-        byte[] bytes = entry.originId().asBytes();
+        byte[] bytes = entry.id().asBytes();
         HugeVectorIndexMap indexMap = HugeVectorIndexMap.parseSequenceId(graph, bytes);
 
         this.parseVectorSequenceName(entry, indexMap);

@@ -21,7 +21,12 @@ import java.io.IOException;
 import java.util.Iterator;
 import java.util.Set;
 
+import org.apache.hugegraph.util.Log;
+import org.slf4j.Logger;
+
 public class VectorIndexManager<Id> {
+
+    private static final Logger LOG = Log.logger(VectorIndexManager.class);
 
     private final VectorIndexStateStore<Id> stateStore;
     private final VectorIndexRuntime<Id> runtime;
@@ -51,12 +56,16 @@ public class VectorIndexManager<Id> {
     private void processIndex(Id indexLableId) {
 
         long currentSequence = this.runtime.getCurrentWaterMark(indexLableId);
+        LOG.debug("processIndex start: ilId={}, waterMark={}",
+                  indexLableId, currentSequence);
 
         Iterator<VectorRecord> it =
                 stateStore.scanDeltas(indexLableId, currentSequence < 0 ? 0 : currentSequence)
                           .iterator();
 
         this.runtime.update(indexLableId, it);
+
+        LOG.debug("processIndex complete: ilId={}", indexLableId);
     }
 
     public Set<Id> searchVector(Id indexLableId, float[] vector, int topK) {
@@ -65,30 +74,36 @@ public class VectorIndexManager<Id> {
         return result;
     }
 
-    public int getNextVectorId(Id indexLableId) {
-        //    check if the runtime context update the vectorId and sequence?
-        //     we could use the runtime function to return id
-        if (runtime.isUpdateMetaData(indexLableId)) {
-            return runtime.getNextVectorId(indexLableId);
+    private void initMetaData(Id indexLableId) {
+        if (!runtime.isUpdateMetaData(indexLableId)) {
+            int currentMaxVectorId = Math.max(runtime.getNextVectorId(indexLableId), 0);
+            long currentSequence = Math.max(runtime.getNextSequence(indexLableId), 0L);
+            runtime.updateMetaData(indexLableId,
+                                   stateStore.getCurrentMaxVectorId(indexLableId,
+                                                                    currentMaxVectorId) + 1,
+                                   stateStore.getCurrentMaxSequence(indexLableId,
+                                                                    currentSequence) + 1);
         }
-        int currentMaxVectorId = runtime.getNextVectorId(indexLableId);
-        long currentSequence = this.runtime.getNextSequence(indexLableId);
-        runtime.updateMetaData(indexLableId,
-                               stateStore.getCurrentMaxVectorId(indexLableId, currentMaxVectorId)+1,
-                               stateStore.getCurrentMaxSequence(indexLableId, currentSequence)+1);
-        return runtime.getNextVectorId(indexLableId);
+    }
+
+    public int getNextVectorId(Id indexLableId) {
+        // Initialize from stateStore on first access
+        initMetaData(indexLableId);
+        // Always increment and return
+        int id = runtime.getNextVectorId(indexLableId);
+        runtime.updateMetaData(indexLableId, id + 1,
+                               runtime.getNextSequence(indexLableId));
+        return id;
     }
 
     public long getNextSequence(Id indexLableId) {
-        if (runtime.isUpdateMetaData(indexLableId)) {
-            return runtime.getNextSequence(indexLableId);
-        }
-        int currentMaxVectorId = runtime.getNextVectorId(indexLableId);
-        long currentSequence = this.runtime.getNextSequence(indexLableId);
+        // Initialize from stateStore on first access
+        initMetaData(indexLableId);
+        // Always increment and return
+        long seq = runtime.getNextSequence(indexLableId);
         runtime.updateMetaData(indexLableId,
-                               stateStore.getCurrentMaxVectorId(indexLableId, currentMaxVectorId+1),
-                               stateStore.getCurrentMaxSequence(indexLableId, currentSequence)+1);
-        return runtime.getNextSequence(indexLableId);
+                               runtime.getNextVectorId(indexLableId), seq + 1);
+        return seq;
     }
 
 }

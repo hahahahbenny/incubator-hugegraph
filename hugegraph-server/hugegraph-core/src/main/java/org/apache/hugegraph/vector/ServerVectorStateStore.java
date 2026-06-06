@@ -44,10 +44,13 @@ import org.apache.hugegraph.type.define.DataType;
 import org.apache.hugegraph.type.define.HugeKeys;
 import org.apache.hugegraph.type.define.IndexVectorState;
 import org.apache.hugegraph.util.E;
+import org.apache.hugegraph.util.Log;
+import org.slf4j.Logger;
 import org.apache.tinkerpop.gremlin.structure.Vertex;
 
 public class ServerVectorStateStore implements VectorIndexStateStore<Id> {
 
+    private static final Logger LOG = Log.logger(ServerVectorStateStore.class);
     private HugeGraphParams graphParams = null;
 
     public ServerVectorStateStore(HugeGraphParams graphParams) {
@@ -183,17 +186,28 @@ public class ServerVectorStateStore implements VectorIndexStateStore<Id> {
         List<VectorRecord> records = new ArrayList<>();
         while (entries.hasNext()) {
             BackendEntry entry = entries.next();
-            Iterator<BackendEntry.BackendColumn> columns = entry.columns().iterator();
             HugeVectorIndexMap map =
                     graphParams.serializer().readVectorSequence(graphParams.graph(), null,
                                                                 entry);
-
-            //query vector index map to get the vertex id
+            LOG.debug("convertToVectorRecord: we get record in while");
+            // Query VECTOR_INDEX_MAP to get the vertex id from the vector id
             Query query = new IdPrefixQuery(HugeType.VECTOR_INDEX_MAP, map.id());
-            QueryResults<BackendEntry> VectorToVertexEntries =
-                    this.graphParams.graphTransaction().query(query);
-
-            Vertex targetVertex = graphParams.graphTransaction().queryVertex(map.elementId());
+            Iterator<BackendEntry> vertexMapIt =
+                    this.graphParams.graphTransaction().query(query).iterator();
+            if (!vertexMapIt.hasNext()) {
+                LOG.debug("convertToVectorRecord: no VECTOR_INDEX_MAP found for vectorId={}",
+                          map.fieldValues());
+                continue;
+            }
+            ConditionQuery cq = new ConditionQuery(HugeType.VECTOR_INDEX_MAP);
+            cq.eq(HugeKeys.INDEX_LABEL_ID, map.indexLabelId());
+            HugeIndex vectorIndex = graphParams.serializer().readIndex(
+                    graphParams.graph(), cq, vertexMapIt.next());
+            if (vectorIndex.elementId() == null) {
+                continue;
+            }
+            Vertex targetVertex = graphParams.graphTransaction().queryVertex(
+                    vectorIndex.elementId());
 
             IndexLabel il = map.indexLabel();
             PropertyKey propertyKey = graphParams.graph().propertyKey(il.indexField());

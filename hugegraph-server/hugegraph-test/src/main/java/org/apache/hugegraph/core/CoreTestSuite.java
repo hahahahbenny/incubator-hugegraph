@@ -47,7 +47,8 @@ import org.slf4j.Logger;
         TaskCoreTest.class,
         AuthTest.class,
         MultiGraphsTest.class,
-        RamTableTest.class
+        RamTableTest.class,
+        VectorIndexEndToEndIntegrationTest.class
 })
 public class CoreTestSuite {
 

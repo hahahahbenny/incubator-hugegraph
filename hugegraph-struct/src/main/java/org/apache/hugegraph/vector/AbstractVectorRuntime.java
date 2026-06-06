@@ -18,7 +18,6 @@
 package org.apache.hugegraph.vector;
 
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -151,7 +150,6 @@ public abstract class AbstractVectorRuntime<Id> implements VectorIndexRuntime<Id
     @Override
     public void flush(Id indexlabelId) throws IOException {
         IndexContext<Id> context = obtainContext(indexlabelId);
-        String contextMetaDataJsonString = JsonUtilCommon.toJson(context.metaData());
         String pathString = basePath + "/" + (indexlabelId) + "/";
         Path indexBaseDir = Paths.get(pathString);
 
@@ -162,6 +160,7 @@ public abstract class AbstractVectorRuntime<Id> implements VectorIndexRuntime<Id
 
         try {
             Path indexPath = newVersionDir.resolve(INDEX_FILE_NAME);
+            // Create the file first (required by OnDiskGraphIndex.write)
             Files.createFile(indexPath);
             context.builder.cleanup();
             OnDiskGraphIndex.write(context.builder.getGraph(), context.vectors, indexPath);
@@ -172,15 +171,21 @@ public abstract class AbstractVectorRuntime<Id> implements VectorIndexRuntime<Id
             // Sync to filesystem
             forceSyncDirectory(newVersionDir);
 
+            // Create a temp symlink pointing to the new version
             Path tempSymlink = indexBaseDir.resolve(TEMP_LINK_NAME);
             Files.deleteIfExists(tempSymlink);
             Files.createSymbolicLink(tempSymlink, newVersionDir);
 
-            Path currentSymlink = getOnDiskIndexDirPath(indexlabelId);
-            // Atomically rename the temporary link to 'current'. THIS IS THE SWITCH.
-            Files.move(tempSymlink, currentSymlink,
-                       StandardCopyOption.ATOMIC_MOVE,
-                       StandardCopyOption.REPLACE_EXISTING);
+            // Atomically switch the 'current' symlink
+            Path currentLink = indexBaseDir.resolve(CURRENT_VERSION_LINK_NAME);
+            if (Files.isSymbolicLink(currentLink)) {
+                Files.move(tempSymlink, currentLink,
+                           StandardCopyOption.ATOMIC_MOVE,
+                           StandardCopyOption.REPLACE_EXISTING);
+            } else {
+                // First save: no existing symlink, simply rename
+                Files.move(tempSymlink, currentLink, StandardCopyOption.ATOMIC_MOVE);
+            }
         } catch (IOException e) {
             System.err.println("Atomic save failed: " + e.getMessage());
             throw e;
@@ -206,9 +211,11 @@ public abstract class AbstractVectorRuntime<Id> implements VectorIndexRuntime<Id
             }
         }
         // Then, fsync the directory itself to persist its metadata (the file entries)
-        try (RandomAccessFile raf = new RandomAccessFile(directory.toFile(), "r");
-             FileChannel ch = raf.getChannel()) {
+        // Use FileChannel.open instead of RandomAccessFile to avoid "(Is a directory)" on Linux
+        try (FileChannel ch = FileChannel.open(directory, StandardOpenOption.READ)) {
             ch.force(true);
+        } catch (IOException e) {
+            // Best-effort: some systems don't support fsync on directories
         }
     }
 
@@ -238,10 +245,10 @@ public abstract class AbstractVectorRuntime<Id> implements VectorIndexRuntime<Id
 
     @Override
     public void updateMetaData(Id indexLabelId, int vectorId, long sequence) {
-        if (!this.vectorMap.containsKey(indexLabelId)) {
-            // warning to log?
-            return;
-        }
+        //if (!this.vectorMap.containsKey(indexLabelId)) {
+        //    // warning to log?
+        //    return;
+        //}
         IndexContext<Id> context = obtainContext(indexLabelId);
         context.metaData.setNextVectorId(vectorId);
         context.metaData.setCurrentMaxSequence(sequence);

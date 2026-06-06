@@ -35,7 +35,7 @@ public class ServerVectorScheduler implements VectorTaskScheduler {
         this.hub.listen(VECTOR_INDEX_EVENT, new EventListener() {
             @Override
             public Object event(Event event) {
-                Runnable task = (Runnable) event;
+                Runnable task = (Runnable) event.args()[0];
                 task.run();
                 return null;
             }

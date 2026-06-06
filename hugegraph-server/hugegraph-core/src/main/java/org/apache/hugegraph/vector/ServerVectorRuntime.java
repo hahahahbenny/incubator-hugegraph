@@ -31,6 +31,8 @@ import org.apache.hugegraph.backend.id.Id;
 import org.apache.hugegraph.schema.IndexLabel;
 import org.apache.hugegraph.util.E;
 import org.apache.hugegraph.util.JsonUtilCommon;
+import org.apache.hugegraph.util.Log;
+import org.slf4j.Logger;
 
 import io.github.jbellis.jvector.disk.ReaderSupplier;
 import io.github.jbellis.jvector.disk.SimpleMappedReader;
@@ -47,6 +49,7 @@ import io.github.jbellis.jvector.vector.types.VectorTypeSupport;
 
 public class ServerVectorRuntime extends AbstractVectorRuntime<Id> {
 
+    private static final Logger LOG = Log.logger(ServerVectorRuntime.class);
     private HugeGraphParams graphParams = null;
 
     public ServerVectorRuntime(String basePath, HugeGraphParams graphParams) {
@@ -72,6 +75,8 @@ public class ServerVectorRuntime extends AbstractVectorRuntime<Id> {
     @Override
     public Iterator<Integer> search(Id indexLabelId, float[] queryVector, int topK) {
         IndexContext<Id> context = obtainContext(indexLabelId);
+        LOG.debug("search: ilId={}, graphSize={}, topK={}",
+                  indexLabelId, context.graphView().size(), topK);
         VectorTypeSupport vectorTypeSupport =
                 VectorizationProvider.getInstance().getVectorTypeSupport();
         VectorFloat<?> vector = vectorTypeSupport.createFloatVector(queryVector);
@@ -106,6 +111,8 @@ public class ServerVectorRuntime extends AbstractVectorRuntime<Id> {
     private void handleBuilding(VectorRecord record, IndexContext<Id> context) {
 
         if (context.vectors.getVector(record.getVectorId()) != null) {
+            LOG.debug("handleBuilding: vectorId={} already exists, skip",
+                      record.getVectorId());
             return;
         }
 
@@ -113,15 +120,20 @@ public class ServerVectorRuntime extends AbstractVectorRuntime<Id> {
                 VectorizationProvider.getInstance().getVectorTypeSupport();
         VectorFloat<?> vector = vectorTypeSupport.createFloatVector(record.getVectorData());
 
+        context.vectors.addNode(record.getVectorId(), vector);
         context.builder.addGraphNode(record.getVectorId(), vector);
 
+        LOG.debug("handleBuilding: added vectorId={}, graphSize={}",
+                  record.getVectorId(), context.builder.getGraph().size());
     }
 
     @Override
     public IndexContext<Id> createNewContext(Id indexLabelId) {
 
         if (!checkPathValid(indexLabelId)) {
-            return getNewContext(indexLabelId, null);
+            IndexContext<Id> ctx = getNewContext(indexLabelId, null);
+            vectorMap.put(indexLabelId, ctx);
+            return ctx;
         }
         // construct the dataPath to read the index and sequence
         Path currentPathDir = null;

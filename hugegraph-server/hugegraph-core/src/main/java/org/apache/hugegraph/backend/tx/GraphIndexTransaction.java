@@ -323,13 +323,9 @@ public class GraphIndexTransaction extends AbstractTransaction {
                  * generate new vector id from the context
                  */
 
-                try(HugeGraph graph = this.graph()){
-                    int vectorId = graph.vectorIndexManager().getNextVectorId(indexLabel.id());
-                    this.updateVectorIndex(indexLabel, vectorId, elementId, expiredTime, removed);
-                    break;
-                } catch (Exception e) {
-                    throw new RuntimeException(e);
-                }
+                int vectorId = this.graph().vectorIndexManager().getNextVectorId(indexLabel.id());
+                this.updateVectorIndex(indexLabel, vectorId, elementId, expiredTime, removed);
+                break;
 
             default:
                 throw new AssertionError(String.format(
@@ -343,17 +339,16 @@ public class GraphIndexTransaction extends AbstractTransaction {
         HugeVectorIndexMap indexMap = new HugeVectorIndexMap(this.graph(), indexLabel, removed);
         indexMap.fieldValues(vectorId);
 
-        try(HugeGraph graph = this.graph()){
-            vectorIndexChanges.get().put(indexLabel.id(), true);
-            long sequence = graph.vectorIndexManager().getNextSequence(indexLabel.id());
-            indexMap.sequence(sequence);
-            indexMap.elementIds(elementId, expiredTime);
-            this.doAppend(this.serializer.writeIndex(indexMap));
-            // writeIndex
-            this.doAppend(this.serializer.writeVectorSequence(indexMap));
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        vectorIndexChanges.get().put(indexLabel.id(), true);
+        long sequence = this.graph().vectorIndexManager().getNextSequence(indexLabel.id());
+        indexMap.sequence(sequence);
+        indexMap.elementIds(elementId, expiredTime);
+        this.doAppend(this.serializer.writeIndex(indexMap));
+        // writeIndex
+        LOG.debug("updateVectorIndex: vertexId=" + elementId +
+                     ", vectorId=" + vectorId + ", sequence=" + sequence +
+                     ", indexLabel=" + indexLabel.id());
+        this.doAppend(this.serializer.writeVectorSequence(indexMap));
     }
 
     private void updateIndex(IndexLabel indexLabel, Object propValue,
